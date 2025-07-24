@@ -12,6 +12,7 @@ class TaskType(StrEnum):
     ARVO = "arvo"
     OSS_FUZZ = "oss-fuzz"
     OSS_FUZZ_LATEST = "oss-fuzz-latest"
+    JULIET_JAVA = "juliet-java"
 
 
 class TaskDifficulty(StrEnum):

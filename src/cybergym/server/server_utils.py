@@ -1,6 +1,9 @@
 import hashlib
 import json
 import os
+import re
+import base64
+import subprocess
 from enum import IntEnum
 from pathlib import Path
 from typing import Literal
@@ -146,6 +149,134 @@ def run_oss_fuzz_container(
     return exit_code, docker_output
 
 
+def run_juliet_java_container(
+    task_id: str,
+    solution_path: Path,
+    docker_timeout: int = DEFAULT_DOCKER_TIMEOUT,
+    cmd_timeout: int = DEFAULT_CMD_TIMEOUT,
+):
+    """
+    Run Juliet Java container to test code completion.
+    
+    Args:
+        task_id: Task ID in format "juliet-java:CWE835_Infinite_Loop__for_01_v2"
+        solution_path: Path to the solution code file
+        docker_timeout: Docker container timeout
+        cmd_timeout: Command execution timeout
+    
+    Returns:
+        Tuple of (exit_code, docker_output)
+    """
+    print(f"[DEBUG] Starting Java test for task_id: {task_id}")
+    print(f"[DEBUG] Solution file: {solution_path}")
+    
+    # Extract testcase info from task_id
+    try:
+        _, testcase_full = task_id.split(":", 1)
+        
+        # Parse testcase name and variant
+        if testcase_full.endswith("_v0") or testcase_full.endswith("_v1") or testcase_full.endswith("_v2"):
+            base_name = testcase_full.rsplit("_", 1)[0]
+            variant = testcase_full.rsplit("_", 1)[1]
+        else:
+            raise ValueError(f"Invalid testcase format: {testcase_full}")
+        
+        # Find the testcase files in dataset
+        # Try multiple possible dataset locations relative to current working directory
+        import os
+        current_dir = Path(os.getcwd())
+        possible_paths = [
+            current_dir / "dataset",  # From main project directory
+            current_dir / "../dataset",  # One level up
+            current_dir / "../../dataset",  # Two levels up
+            Path("/scr/ruizhe/java_datasets/juliet-java-test-suite/dataset"),  # Absolute path
+        ]
+        
+        dataset_dir = None
+        for path in possible_paths:
+            if path.exists() and path.is_dir():
+                dataset_dir = path.resolve()  # Get absolute path
+                break
+        
+        if dataset_dir is None:
+            available_paths = [str(p) for p in possible_paths]
+            raise FileNotFoundError(f"Dataset directory not found. Tried: {available_paths}")
+        
+        print(f"[DEBUG] Found dataset directory: {dataset_dir}")
+        testcase_dir = dataset_dir / base_name
+        
+        if not testcase_dir.exists():
+            raise FileNotFoundError(f"Testcase directory not found: {testcase_dir}")
+        
+        print(f"[DEBUG] Using testcase directory: {testcase_dir}")
+        
+        # Find required files
+        masked_file = testcase_dir / f"{base_name}_{variant}_masked.java"
+        test_file = testcase_dir / f"{base_name}_{variant}_Test.java"
+        
+        print(f"[DEBUG] Looking for masked file: {masked_file}")
+        print(f"[DEBUG] Looking for test file: {test_file}")
+        
+        if not masked_file.exists():
+            raise FileNotFoundError(f"Masked file not found: {masked_file}")
+        if not test_file.exists():
+            raise FileNotFoundError(f"Test file not found: {test_file}")
+        
+        # Read solution code
+        solution_code = solution_path.read_text()
+        print(f"[DEBUG] Solution code length: {len(solution_code)} characters")
+        
+        # Use the same Docker testing logic as our original implementation
+        client = docker.from_env()
+        container = None
+        
+        try:
+            # Encode solution as base64 to avoid shell escaping issues
+            encoded_solution = base64.b64encode(solution_code.encode('utf-8')).decode('ascii')
+            
+            # Run Docker command using juliet-java-local image
+            cmd = [
+                'bash', '-c',
+                f"echo '{encoded_solution}' | base64 -d > /tmp/solution.java && cd /tmp && /usr/local/bin/compile-and-test.sh template.java test.java solution.java"
+            ]
+            
+            container = client.containers.run(
+                image="juliet-java-local",
+                command=cmd,
+                volumes={
+                    str(masked_file.absolute()): {"bind": "/tmp/template.java", "mode": "ro"},
+                    str(test_file.absolute()): {"bind": "/tmp/test.java", "mode": "ro"}
+                },
+                detach=True,
+            )
+            
+            out = container.logs(stdout=True, stderr=False, stream=True, follow=True)
+            exit_code = container.wait(timeout=docker_timeout)["StatusCode"]
+            
+            if exit_code == 137:  # Process killed by timeout
+                exit_code = CustomExitCode.Timeout
+                docker_output = b""
+            else:
+                docker_output = b"".join(out)
+                
+        except requests.exceptions.ReadTimeout:
+            raise HTTPException(status_code=500, detail="Timeout waiting for Java test") from None
+        except DockerException as e:
+            raise HTTPException(status_code=500, detail=f"Java test error: {e}") from None
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Unexpected Java test error: {e}") from None
+        finally:
+            if container:
+                container.remove(force=True)
+        
+        return exit_code, docker_output
+        
+    except Exception as e:
+        # If anything goes wrong, return error
+        error_message = f"Java test failed: {str(e)}"
+        return 1, error_message.encode('utf-8')
+
+
 def run_container(
     task_id: str,
     poc_path: Path,
@@ -171,6 +302,16 @@ def run_container(
             oss_fuzz_id,
             mode,
             oss_fuzz_path,
+            docker_timeout=docker_timeout,
+            cmd_timeout=cmd_timeout,
+        )
+    elif task_id.startswith("juliet-java:"):
+        # For Java tasks, we only support "vul" mode (testing)
+        if mode == "fix":
+            raise HTTPException(status_code=400, detail="Fix mode not supported for Java tasks")
+        return run_juliet_java_container(
+            task_id,
+            poc_path,
             docker_timeout=docker_timeout,
             cmd_timeout=cmd_timeout,
         )
