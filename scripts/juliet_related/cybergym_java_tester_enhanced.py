@@ -10,10 +10,10 @@ This script extends the original CyberGym Java tester with additional features:
 """
 
 import argparse
+import asyncio
 import hashlib
 import json
 import os
-import requests
 import sys
 import tempfile
 from collections import defaultdict
@@ -22,19 +22,22 @@ from pathlib import Path
 from typing import List, Optional, Dict
 from uuid import uuid4
 
+import aiohttp
+import requests
 from datasets import load_dataset
 from dotenv import load_dotenv
-from openai import OpenAI
+from openai import AsyncOpenAI
 
 
 class EnhancedCyberGymJavaTester:
     def __init__(
-        self, openai_api_key: str, cybergym_server: str = "http://127.0.0.1:8666"
+        self, openai_api_key: str, cybergym_server: str = "http://127.0.0.1:8666", max_concurrent: int = 5
     ):
-        self.openai_client = OpenAI(api_key=openai_api_key)
+        self.openai_client = AsyncOpenAI(api_key=openai_api_key)
         self.cybergym_server = cybergym_server.rstrip("/")
         self.results = []
         self.salt = "CyberGym"  # CyberGym's default salt
+        self.semaphore = asyncio.Semaphore(max_concurrent)  # Control concurrency
 
     def check_cybergym_server(self) -> bool:
         """Check if CyberGym server is running"""
@@ -201,10 +204,10 @@ Please provide only the replacement code:"""
 
         return prompt
 
-    def get_gpt_completion(self, prompt: str) -> Optional[str]:
+    async def get_gpt_completion(self, prompt: str) -> Optional[str]:
         """Get code completion from o3-mini - updated model"""
         try:
-            response = self.openai_client.chat.completions.create(
+            response = await self.openai_client.chat.completions.create(
                 model="o3-mini",  # Changed from gpt-4o to o3-mini
                 messages=[
                     {
@@ -304,7 +307,7 @@ Please provide only the replacement code:"""
             "require_flag": True,
         }
 
-    def submit_to_cybergym(self, task_id: str, solution_code: str) -> Optional[dict]:
+    async def submit_to_cybergym(self, task_id: str, solution_code: str) -> Optional[dict]:
         """Submit Java code to CyberGym server"""
         try:
             # Create metadata
@@ -318,24 +321,25 @@ Please provide only the replacement code:"""
                 temp_file = f.name
 
             try:
-                # Submit to CyberGym
-                with open(temp_file, "rb") as f:
-                    files = {"file": f}
-                    data = {"metadata": json.dumps(metadata)}
+                # Submit to CyberGym using aiohttp
+                async with aiohttp.ClientSession() as session:
+                    with open(temp_file, "rb") as f:
+                        form_data = aiohttp.FormData()
+                        form_data.add_field("file", f, filename="solution.java")
+                        form_data.add_field("metadata", json.dumps(metadata))
 
-                    response = requests.post(
-                        f"{self.cybergym_server}/submit-java-code",
-                        files=files,
-                        data=data,
-                        timeout=120,
-                    )
-
-                if response.status_code == 200:
-                    return response.json()
-                else:
-                    print(f"❌ CyberGym submission failed: {response.status_code}")
-                    print(f"Response: {response.text}")
-                    return None
+                        async with session.post(
+                            f"{self.cybergym_server}/submit-java-code",
+                            data=form_data,
+                            timeout=aiohttp.ClientTimeout(total=120),
+                        ) as response:
+                            if response.status == 200:
+                                return await response.json()
+                            else:
+                                response_text = await response.text()
+                                print(f"❌ CyberGym submission failed: {response.status}")
+                                print(f"Response: {response_text}")
+                                return None
 
             finally:
                 # Clean up temp file
@@ -399,50 +403,44 @@ Please provide only the replacement code:"""
             "cybergym_result": result,
         }
 
-    def test_single_case(self, testcase) -> Optional[dict]:
-        """Test a single CWE test case using CyberGym"""
-        task_id = testcase["id"]
-        # masked_file = testcase['masked_file']
-        # description_file = testcase['description_file']
+    async def test_single_case(self, testcase, progress_info: str = "") -> Optional[dict]:
+        """Test a single CWE test case using CyberGym with concurrency control"""
+        async with self.semaphore:  # Control concurrency
+            task_id = testcase["id"]
+            
+            print(f"{progress_info}Testing: {task_id}")
 
-        print(f"Testing: {task_id}")
+            prompt = testcase["input_prompt"]
+            
+            # Get GPT completion
+            solution_code = await self.get_gpt_completion(prompt)
+            if not solution_code:
+                print(f"{progress_info}Failed to get GPT completion")
+                return None
 
-        # # Read files
-        # masked_content = masked_file.read_text()
-        # description_content = self.read_descriptioFn_content(description_file)
+            # Submit to CyberGym
+            cybergym_result = await self.submit_to_cybergym(task_id, solution_code)
+            if not cybergym_result:
+                print(f"{progress_info}Failed to submit to CyberGym")
+                return None
 
-        # Generate completion prompt
-        # prompt = self.generate_completion_prompt(masked_content, description_content)
-        prompt = testcase["input_prompt"]
-        # Get GPT completion
-        solution_code = self.get_gpt_completion(prompt)
-        if not solution_code:
-            print("Failed to get GPT completion")
-            return None
+            # Parse results
+            results = self.parse_cybergym_results(cybergym_result)
 
-        # Submit to CyberGym
-        cybergym_result = self.submit_to_cybergym(task_id, solution_code)
-        if not cybergym_result:
-            print("Failed to submit to CyberGym")
-            return None
+            # Add metadata
+            meta_data = json.loads(testcase["meta_data"])
+            results.update(
+                {
+                    "testcase_name": meta_data.get("testcase_name", None),
+                    "cwe_type": "CWE-" + testcase["CWE_ID"],
+                    "variant": meta_data.get("is_mutated", "unknown"),
+                    "task_id": task_id,
+                    "solution_code": solution_code,
+                    "description_content": meta_data["guidance"],
+                }
+            )
 
-        # Parse results
-        results = self.parse_cybergym_results(cybergym_result)
-
-        # Add metadata
-        meta_data = json.loads(testcase["meta_data"])
-        results.update(
-            {
-                "testcase_name": meta_data.get("testcase_name", None),
-                "cwe_type": "CWE-" + testcase["CWE_ID"],
-                "variant": meta_data.get("is_mutated", "unknown"),
-                "task_id": task_id,
-                "solution_code": solution_code,
-                "description_content": meta_data["guidance"],
-            }
-        )
-
-        return results
+            return results
 
     def calculate_cwe_statistics(self, results: List[dict]) -> Dict[str, dict]:
         """Calculate per-CWE statistics excluding test compilation failures"""
@@ -577,14 +575,14 @@ Please provide only the replacement code:"""
                             f"    {variant}: {v_stats['test_passed_cases']}/{v_stats['valid_for_accuracy']} accuracy ({v_stats['accuracy'] * 100:.1f}%), avg score: {v_stats['average_score']:.3f}"
                         )
 
-    def test_cwe_batch(
+    async def test_cwe_batch(
         self,
         cwe_filter: Optional[str] = None,
         variant_filter: str = "all",
         max_cases: Optional[int] = None,
     ):
-        """Test a batch of CWE cases with variant filtering and detailed statistics"""
-        print("🚀 Enhanced CyberGym Java CWE Tester (o3-mini)")
+        """Test a batch of CWE cases with variant filtering and detailed statistics - ASYNC"""
+        print("🚀 Enhanced CyberGym Java CWE Tester (o3-mini) - Async Version")
         print("=" * 60)
 
         # Check CyberGym server
@@ -616,17 +614,31 @@ Please provide only the replacement code:"""
         print(
             f"Found {len(testcases)} test cases for {filter_text} (variant filter: {variant_filter})"
         )
+        print(f"Running with concurrency limit: {self.semaphore._value}")
         print("=" * 60)
 
+        # Create async tasks for concurrent execution
+        print("Starting async batch testing...")
+        tasks = []
+        for i, testcase in enumerate(testcases, 1):
+            progress_info = f"[{i}/{len(testcases)}] "
+            task = self.test_single_case(testcase, progress_info)
+            tasks.append(task)
+
+        # Execute all tasks concurrently
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Process results
         compile_success_count = 0
         test_compile_success_count = 0
         test_compile_failed_count = 0
         total_score = 0.0
-
-        for i, testcase in enumerate(testcases, 1):
-            print(f"[{i}/{len(testcases)}] ", end="")
-
-            result = self.test_single_case(testcase)
+        
+        for i, result in enumerate(results, 1):
+            if isinstance(result, Exception):
+                print(f"[{i}/{len(testcases)}] EXCEPTION: {result}")
+                continue
+                
             if result:
                 self.results.append(result)
 
@@ -666,9 +678,9 @@ Please provide only the replacement code:"""
                 if result.get("cybergym_result", {}).get("flag"):
                     status_parts.append("FLAG_OBTAINED")
 
-                print(" | ".join(status_parts))
+                print(f"[{i}/{len(testcases)}] " + " | ".join(status_parts))
             else:
-                print("FAILED")
+                print(f"[{i}/{len(testcases)}] FAILED")
 
         # Calculate detailed statistics
         cwe_stats = self.calculate_cwe_statistics(self.results)
@@ -761,7 +773,7 @@ def main():
     tester = EnhancedCyberGymJavaTester(api_key, args.server)
 
     # Run tests
-    tester.test_cwe_batch(args.cwe_type, args.variant, args.max_cases)
+    asyncio.run(tester.test_cwe_batch(args.cwe_type, args.variant, args.max_cases))
 
     # Save results if requested
     if args.save_results:
