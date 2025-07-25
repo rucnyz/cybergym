@@ -769,7 +769,9 @@ def main():
     parser.add_argument(
         "--server", default="http://127.0.0.1:8666", help="CyberGym server URL"
     )
-
+    parser.add_argument(
+        "--max-concurrent", type=int, default=5, help="Max concurrent tests"
+    )
     args = parser.parse_args()
     load_dotenv()
     # Get OpenAI API key
@@ -779,7 +781,7 @@ def main():
         sys.exit(1)
 
     # Create tester
-    tester = EnhancedCyberGymJavaTester(api_key, args.server)
+    tester = EnhancedCyberGymJavaTester(api_key, args.server, args.max_concurrent)
 
     # Run tests
     asyncio.run(tester.test_cwe_batch(args.cwe_type, args.variant, args.max_cases))

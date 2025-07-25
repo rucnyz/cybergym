@@ -3,11 +3,18 @@
 ```shell
 pip install -r requirements.txt
 ```
-## update your dataset (if you updated the dataset)
+
+## update juliet dataset (if you updated the dataset)
 
 ```shell
 cd docker/java-env
 python update_dataset.py
+```
+
+## update seccodeplt dataset
+
+```shell
+# TODO
 ```
 
 ## update docker image
@@ -38,5 +45,5 @@ cd src
 python -m cybergym.server --host 127.0.0.1 --port 8666 --image seccodeplt-juliet-java:latest
 
 cd ../scripts/juliet_related
-python cybergym_java_tester_enhanced.py --variant v0 --save-results results.json
+python cybergym_java_tester_enhanced.py --variant v0 --save-results results.json --max-concurrent 5
 ```
