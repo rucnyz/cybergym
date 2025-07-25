@@ -90,19 +90,19 @@ def submit_java_code(db: SessionDep, metadata: Annotated[str, Form()], file: Ann
         payload = Payload.model_validate_json(metadata)
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid metadata format") from None
-    
+
     # Check if this is a Java task
     if not payload.task_id.startswith("juliet-java:"):
         raise HTTPException(status_code=400, detail="This endpoint is only for Java tasks")
-    
+
     payload.data = file.file.read()
     res = submit_poc(db, payload, mode="vul", log_dir=LOG_DIR, salt=SALT)
     res = _post_process_result(res)
-    
+
     # Add Java-specific information to response
     res["language"] = "java"
     res["task_type"] = "code_completion"
-    
+
     return res
 
 
@@ -129,6 +129,24 @@ def verify_all_pocs_for_agent_id(db: SessionDep, query: VerifyPocs):
     return {
         "message": f"All {len(records)} PoCs for this agent_id have been verified",
         "poc_ids": [record.poc_id for record in records],
+    }
+
+
+@public_router.get("/")
+def root():
+    return {
+        "message": "SecCodePlt Server API",
+        "version": "1.0.0",
+        "endpoints": {
+            "public": [
+                "POST /submit-java-code"
+            ],
+            "private": [
+                "POST /submit-fix",
+                "POST /query-poc",
+                "POST /verify-agent-pocs"
+            ]
+        }
     }
 
 

@@ -180,47 +180,38 @@ def run_juliet_java_container(
             variant = testcase_full.rsplit("_", 1)[1]
         else:
             raise ValueError(f"Invalid testcase format: {testcase_full}")
-        
+
         # Find the testcase files in dataset
         # Try multiple possible dataset locations relative to current working directory
-        import os
-        current_dir = Path(os.getcwd())
-        possible_paths = [
-            current_dir / "dataset",  # From main project directory
-            current_dir / "../dataset",  # One level up
-            current_dir / "../../dataset",  # Two levels up
-            Path("/scr/ruizhe/java_datasets/juliet-java-test-suite/dataset"),  # Absolute path
-        ]
-        
-        dataset_dir = None
-        for path in possible_paths:
-            if path.exists() and path.is_dir():
-                dataset_dir = path.resolve()  # Get absolute path
-                break
-        
-        if dataset_dir is None:
-            available_paths = [str(p) for p in possible_paths]
-            raise FileNotFoundError(f"Dataset directory not found. Tried: {available_paths}")
-        
-        print(f"[DEBUG] Found dataset directory: {dataset_dir}")
-        testcase_dir = dataset_dir / base_name
-        
-        if not testcase_dir.exists():
-            raise FileNotFoundError(f"Testcase directory not found: {testcase_dir}")
-        
+        # import os
+        # current_dir = Path(os.getcwd())
+        # possible_paths = [
+        #     current_dir / "dataset",  # From main project directory
+        #     current_dir / "../dataset",  # One level up
+        #     current_dir / "../../dataset",  # Two levels up
+        #     Path("/scr/ruizhe/java_datasets/juliet-java-test-suite/dataset"),  # Absolute path
+        # ]
+        #
+        # dataset_dir = None
+        # for path in possible_paths:
+        #     if path.exists() and path.is_dir():
+        #         dataset_dir = path.resolve()  # Get absolute path
+        #         break
+        #
+        # if dataset_dir is None:
+        #     available_paths = [str(p) for p in possible_paths]
+        #     raise FileNotFoundError(f"Dataset directory not found. Tried: {available_paths}")
+        #
+        # print(f"[DEBUG] Found dataset directory: {dataset_dir}")
+        testcase_dir = f"/workspace/dataset/{base_name}"
         print(f"[DEBUG] Using testcase directory: {testcase_dir}")
         
         # Find required files
-        masked_file = testcase_dir / f"{base_name}_{variant}_masked.java"
-        test_file = testcase_dir / f"{base_name}_{variant}_Test.java"
+        masked_file = testcase_dir + f"/{base_name}_{variant}_masked.java"
+        test_file = testcase_dir + f"/{base_name}_{variant}_Test.java"
         
         print(f"[DEBUG] Looking for masked file: {masked_file}")
         print(f"[DEBUG] Looking for test file: {test_file}")
-        
-        if not masked_file.exists():
-            raise FileNotFoundError(f"Masked file not found: {masked_file}")
-        if not test_file.exists():
-            raise FileNotFoundError(f"Test file not found: {test_file}")
         
         # Read solution code
         solution_code = solution_path.read_text()
@@ -237,16 +228,12 @@ def run_juliet_java_container(
             # Run Docker command using juliet-java-local image
             cmd = [
                 'bash', '-c',
-                f"echo '{encoded_solution}' | base64 -d > /tmp/solution.java && cd /tmp && /usr/local/bin/compile-and-test.sh template.java test.java solution.java"
+                f"echo '{encoded_solution}' | base64 -d > /workspace/solution.java && cd /workspace && /usr/local/bin/compile-and-test.sh {masked_file} {test_file} solution.java"
             ]
-            
+
             container = client.containers.run(
                 image="juliet-java-local",
                 command=cmd,
-                volumes={
-                    str(masked_file.absolute()): {"bind": "/tmp/template.java", "mode": "ro"},
-                    str(test_file.absolute()): {"bind": "/tmp/test.java", "mode": "ro"}
-                },
                 detach=True,
             )
             
