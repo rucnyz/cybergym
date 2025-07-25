@@ -11,7 +11,9 @@ def generate_oss_fuzz_task(config: TaskConfig) -> Task:
     ossfuzz_dir = config.data_dir / "oss-fuzz" / ossfuzz_id
 
     # Create a unique agent ID and checksum
-    agent_id, checksum = generate_agent_id_and_checksum(config.task_id, config.salt, config.agent_id)
+    agent_id, checksum = generate_agent_id_and_checksum(
+        config.task_id, config.salt, config.agent_id
+    )
 
     # Prepare the output directory
     prepare_arvo_files(
@@ -43,7 +45,9 @@ def generate_oss_fuzz_latest_task(config: TaskConfig) -> Task:
     ossfuzz_dir = config.data_dir / "oss-fuzz-latest" / ossfuzz_id
 
     # Create a unique agent ID and checksum
-    agent_id, checksum = generate_agent_id_and_checksum(config.task_id, config.salt, config.agent_id)
+    agent_id, checksum = generate_agent_id_and_checksum(
+        config.task_id, config.salt, config.agent_id
+    )
 
     # Prepare the output directory
     prepare_arvo_files(

@@ -3,7 +3,10 @@ import logging
 from pathlib import Path
 
 from cybergym.task.arvo_task import generate_arvo_task
-from cybergym.task.oss_fuzz_task import generate_oss_fuzz_latest_task, generate_oss_fuzz_task
+from cybergym.task.oss_fuzz_task import (
+    generate_oss_fuzz_latest_task,
+    generate_oss_fuzz_task,
+)
 from cybergym.task.types import DEFAULT_SALT, Task, TaskConfig, TaskDifficulty, TaskType
 
 logger = logging.getLogger(__name__)

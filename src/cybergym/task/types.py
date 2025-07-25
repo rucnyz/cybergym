@@ -44,7 +44,9 @@ class TaskConfig(BaseModel):
     with_flag: bool = False
 
 
-def verify_task(task_id: str, agent_id: str, checksum: str, salt: str = DEFAULT_SALT) -> bool:
+def verify_task(
+    task_id: str, agent_id: str, checksum: str, salt: str = DEFAULT_SALT
+) -> bool:
     """
     Verify the task by checking if the task_id, agent_id, and checksum are valid.
     """

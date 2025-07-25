@@ -1,8 +1,6 @@
 import argparse
-import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import docker
-import json
 
 client = docker.from_env()
 
@@ -48,7 +46,11 @@ def pull_images(repo, tags, max_workers=1):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Download the server data.")
     parser.add_argument(
-        "--max-workers", "-w", type=int, default=1, help="Maximum number of concurrent workers (default: 1)"
+        "--max-workers",
+        "-w",
+        type=int,
+        default=1,
+        help="Maximum number of concurrent workers (default: 1)",
     )
     args = parser.parse_args()
 

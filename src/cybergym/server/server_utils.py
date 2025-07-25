@@ -15,7 +15,12 @@ from docker.errors import DockerException
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from cybergym.server.pocdb import PoCRecord, get_or_create_poc, get_poc_by_hash, update_poc_output
+from cybergym.server.pocdb import (
+    PoCRecord,
+    get_or_create_poc,
+    get_poc_by_hash,
+    update_poc_output,
+)
 from cybergym.server.types import Payload
 from cybergym.task.types import verify_task
 from cybergym.utils import get_arvo_id, get_oss_fuzz_id
@@ -66,7 +71,9 @@ def run_arvo_container(
         else:
             docker_output = b"".join(out)
     except requests.exceptions.ReadTimeout:
-        raise HTTPException(status_code=500, detail="Timeout waiting for the program") from None
+        raise HTTPException(
+            status_code=500, detail="Timeout waiting for the program"
+        ) from None
     except DockerException as e:
         raise HTTPException(status_code=500, detail=f"Running error: {e}") from None
     except Exception as e:
@@ -101,7 +108,10 @@ def run_oss_fuzz_container(
             out_dir = Path(oss_fuzz_path, f"{oss_fuzz_id}-{mode}", "out")
         else:
             if mode == "fix":
-                raise HTTPException(status_code=400, detail="Fix mode is not supported for oss-fuzz-latest")
+                raise HTTPException(
+                    status_code=400,
+                    detail="Fix mode is not supported for oss-fuzz-latest",
+                )
             project, index = oss_fuzz_id.rsplit("-", 1)
             out_dir = Path(oss_fuzz_path, project, "out")
         volumes = {str(poc_path.absolute()): {"bind": "/testcase", "mode": "ro"}}
@@ -110,7 +120,9 @@ def run_oss_fuzz_container(
             container_path = os.path.join("/out", filename)
             volumes[host_path] = {"bind": container_path, "mode": "ro"}
         if is_integer(oss_fuzz_id):
-            meta_file = os.path.join(oss_fuzz_path, f"{oss_fuzz_id}-{mode}", "metadata.json")
+            meta_file = os.path.join(
+                oss_fuzz_path, f"{oss_fuzz_id}-{mode}", "metadata.json"
+            )
             with open(meta_file) as f:
                 metadata = json.load(f)
             fuzzer_name = metadata["fuzz_target"]
@@ -121,7 +133,11 @@ def run_oss_fuzz_container(
                 metadata = json.load(f)
             fuzzer_name = metadata["fuzz_targets"][int(index)]
 
-        cmd = ["/bin/bash", "-c", f"timeout -s SIGKILL {cmd_timeout} reproduce {fuzzer_name} 2>&1"]
+        cmd = [
+            "/bin/bash",
+            "-c",
+            f"timeout -s SIGKILL {cmd_timeout} reproduce {fuzzer_name} 2>&1",
+        ]
         container = client.containers.run(
             image="cybergym/oss-fuzz-base-runner",
             command=cmd,
@@ -137,7 +153,9 @@ def run_oss_fuzz_container(
         else:
             docker_output = b"".join(out)
     except requests.exceptions.ReadTimeout:
-        raise HTTPException(status_code=500, detail="Timeout waiting for the program") from None
+        raise HTTPException(
+            status_code=500, detail="Timeout waiting for the program"
+        ) from None
     except DockerException as e:
         raise HTTPException(status_code=500, detail=f"Running error: {e}") from None
     except Exception as e:
@@ -158,25 +176,29 @@ def run_juliet_java_container(
 ):
     """
     Run Juliet Java container to test code completion.
-    
+
     Args:
         task_id: Task ID in format "juliet-java:CWE835_Infinite_Loop__for_01_v2"
         solution_path: Path to the solution code file
         docker_timeout: Docker container timeout
         cmd_timeout: Command execution timeout
-    
+
     Returns:
         Tuple of (exit_code, docker_output)
     """
     print(f"[DEBUG] Starting Java test for task_id: {task_id}")
     print(f"[DEBUG] Solution file: {solution_path}")
-    
+
     # Extract testcase info from task_id
     try:
         _, testcase_full = task_id.split(":", 1)
-        
+
         # Parse testcase name and variant
-        if testcase_full.endswith("_v0") or testcase_full.endswith("_v1") or testcase_full.endswith("_v2"):
+        if (
+            testcase_full.endswith("_v0")
+            or testcase_full.endswith("_v1")
+            or testcase_full.endswith("_v2")
+        ):
             base_name = testcase_full.rsplit("_", 1)[0]
             variant = testcase_full.rsplit("_", 1)[1]
         else:
@@ -206,30 +228,33 @@ def run_juliet_java_container(
         # print(f"[DEBUG] Found dataset directory: {dataset_dir}")
         testcase_dir = f"/workspace/dataset/{base_name}"
         print(f"[DEBUG] Using testcase directory: {testcase_dir}")
-        
+
         # Find required files
         masked_file = testcase_dir + f"/{base_name}_{variant}_masked.java"
         test_file = testcase_dir + f"/{base_name}_{variant}_Test.java"
-        
+
         print(f"[DEBUG] Looking for masked file: {masked_file}")
         print(f"[DEBUG] Looking for test file: {test_file}")
-        
+
         # Read solution code
         solution_code = solution_path.read_text()
         print(f"[DEBUG] Solution code length: {len(solution_code)} characters")
-        
+
         # Use the same Docker testing logic as our original implementation
         client = docker.from_env()
         container = None
-        
+
         try:
             # Encode solution as base64 to avoid shell escaping issues
-            encoded_solution = base64.b64encode(solution_code.encode('utf-8')).decode('ascii')
-            
+            encoded_solution = base64.b64encode(solution_code.encode("utf-8")).decode(
+                "ascii"
+            )
+
             # Run Docker command using juliet-java-local image
             cmd = [
-                'bash', '-c',
-                f"echo '{encoded_solution}' | base64 -d > /workspace/solution.java && cd /workspace && /usr/local/bin/compile-and-test.sh {masked_file} {test_file} solution.java"
+                "bash",
+                "-c",
+                f"echo '{encoded_solution}' | base64 -d > /workspace/solution.java && cd /workspace && /usr/local/bin/compile-and-test.sh {masked_file} {test_file} solution.java",
             ]
 
             container = client.containers.run(
@@ -237,32 +262,38 @@ def run_juliet_java_container(
                 command=cmd,
                 detach=True,
             )
-            
+
             out = container.logs(stdout=True, stderr=False, stream=True, follow=True)
             exit_code = container.wait(timeout=docker_timeout)["StatusCode"]
-            
+
             if exit_code == 137:  # Process killed by timeout
                 exit_code = CustomExitCode.Timeout
                 docker_output = b""
             else:
                 docker_output = b"".join(out)
-                
+
         except requests.exceptions.ReadTimeout:
-            raise HTTPException(status_code=500, detail="Timeout waiting for Java test") from None
+            raise HTTPException(
+                status_code=500, detail="Timeout waiting for Java test"
+            ) from None
         except DockerException as e:
-            raise HTTPException(status_code=500, detail=f"Java test error: {e}") from None
+            raise HTTPException(
+                status_code=500, detail=f"Java test error: {e}"
+            ) from None
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Unexpected Java test error: {e}") from None
+            raise HTTPException(
+                status_code=500, detail=f"Unexpected Java test error: {e}"
+            ) from None
         finally:
             if container:
                 container.remove(force=True)
-        
+
         return exit_code, docker_output
-        
+
     except Exception as e:
         # If anything goes wrong, return error
         error_message = f"Java test failed: {str(e)}"
-        return 1, error_message.encode('utf-8')
+        return 1, error_message.encode("utf-8")
 
 
 def run_container(
@@ -296,7 +327,9 @@ def run_container(
     elif task_id.startswith("juliet-java:"):
         # For Java tasks, we only support "vul" mode (testing)
         if mode == "fix":
-            raise HTTPException(status_code=400, detail="Fix mode not supported for Java tasks")
+            raise HTTPException(
+                status_code=400, detail="Fix mode not supported for Java tasks"
+            )
         image = kwargs.get("image", "seccodeplt-juliet-java")
         return run_juliet_java_container(
             task_id,
@@ -314,7 +347,15 @@ def get_poc_storage_path(poc_id: str, log_dir: Path):
     return log_dir / poc_id[:2] / poc_id[2:4] / poc_id
 
 
-def submit_poc(db: Session, payload: Payload, mode: str, log_dir: Path, salt: str, oss_fuzz_path: Path | None = None, image: str | None = None):
+def submit_poc(
+    db: Session,
+    payload: Payload,
+    mode: str,
+    log_dir: Path,
+    salt: str,
+    oss_fuzz_path: Path | None = None,
+    image: str | None = None,
+):
     # TODO: limit output size for return
     if not verify_task(payload.task_id, payload.agent_id, payload.checksum, salt=salt):
         raise HTTPException(status_code=400, detail="Invalid checksum")
@@ -329,7 +370,10 @@ def submit_poc(db: Session, payload: Payload, mode: str, log_dir: Path, salt: st
     poc_id = uuid4().hex
     if existings:
         if len(existings) > 1:
-            raise HTTPException(status_code=500, detail="Multiple PoC records for same agent/task/hash found")
+            raise HTTPException(
+                status_code=500,
+                detail="Multiple PoC records for same agent/task/hash found",
+            )
         poc_record = existings[0]
         poc_id = poc_record.poc_id
         # Load output from file
@@ -374,7 +418,9 @@ def submit_poc(db: Session, payload: Payload, mode: str, log_dir: Path, salt: st
     kwargs = {"oss_fuzz_path": oss_fuzz_path}
     if image:
         kwargs["image"] = image
-    exit_code, docker_output = run_container(payload.task_id, poc_bin_file, mode, **kwargs)
+    exit_code, docker_output = run_container(
+        payload.task_id, poc_bin_file, mode, **kwargs
+    )
     output_file = poc_dir / f"output.{mode}"
     with open(output_file, "wb") as f:
         f.write(docker_output)
@@ -392,10 +438,18 @@ def submit_poc(db: Session, payload: Payload, mode: str, log_dir: Path, salt: st
     return res
 
 
-def run_poc_id(db: Session, log_dir: Path, poc_id: str, rerun: bool = False, oss_fuzz_path: Path | None = None):
+def run_poc_id(
+    db: Session,
+    log_dir: Path,
+    poc_id: str,
+    rerun: bool = False,
+    oss_fuzz_path: Path | None = None,
+):
     records = db.query(PoCRecord).filter_by(poc_id=poc_id).all()
     if len(records) != 1:
-        raise HTTPException(status_code=500, detail=f"{len(records)} PoC records for same poc_id found")
+        raise HTTPException(
+            status_code=500, detail=f"{len(records)} PoC records for same poc_id found"
+        )
 
     record = records[0]
     poc_dir = get_poc_storage_path(poc_id, log_dir)
@@ -405,7 +459,9 @@ def run_poc_id(db: Session, log_dir: Path, poc_id: str, rerun: bool = False, oss
 
     if rerun or record.vul_exit_code is None:
         # Run the PoC
-        exit_code, docker_output = run_container(record.task_id, poc_path, "vul", oss_fuzz_path=oss_fuzz_path)
+        exit_code, docker_output = run_container(
+            record.task_id, poc_path, "vul", oss_fuzz_path=oss_fuzz_path
+        )
         with open(poc_dir / "output.vul", "wb") as f:
             f.write(docker_output)
         update_poc_output(db, record, "vul", exit_code)

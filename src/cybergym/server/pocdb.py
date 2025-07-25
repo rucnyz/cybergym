@@ -1,7 +1,15 @@
 import datetime
 from pathlib import Path
 
-from sqlalchemy import Column, DateTime, Engine, Integer, String, UniqueConstraint, create_engine
+from sqlalchemy import (
+    Column,
+    DateTime,
+    Engine,
+    Integer,
+    String,
+    UniqueConstraint,
+    create_engine,
+)
 from sqlalchemy.orm import DeclarativeBase, Session
 
 
@@ -25,7 +33,9 @@ class PoCRecord(Base):
     fix_exit_code = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=now, nullable=False)
     updated_at = Column(DateTime, default=now, onupdate=now, nullable=False)
-    __table_args__ = (UniqueConstraint("agent_id", "task_id", "poc_hash", name="_agent_task_hash_uc"),)
+    __table_args__ = (
+        UniqueConstraint("agent_id", "task_id", "poc_hash", name="_agent_task_hash_uc"),
+    )
 
     def to_dict(self):
         return {
@@ -42,9 +52,18 @@ class PoCRecord(Base):
 
 
 def get_or_create_poc(
-    db: Session, agent_id: str, task_id: str, poc_id: str, poc_hash: str, poc_length: int
+    db: Session,
+    agent_id: str,
+    task_id: str,
+    poc_id: str,
+    poc_hash: str,
+    poc_length: int,
 ) -> PoCRecord:
-    record = db.query(PoCRecord).filter_by(agent_id=agent_id, task_id=task_id, poc_hash=poc_hash).first()
+    record = (
+        db.query(PoCRecord)
+        .filter_by(agent_id=agent_id, task_id=task_id, poc_hash=poc_hash)
+        .first()
+    )
     if record:
         return record
     record = PoCRecord(
@@ -90,7 +109,11 @@ def get_poc_by_hash(
 
 def init_engine(db_path: Path) -> Engine:
     engine = create_engine(
-        f"sqlite:///{db_path}", echo=False, connect_args={"check_same_thread": False}, pool_size=64, max_overflow=64
+        f"sqlite:///{db_path}",
+        echo=False,
+        connect_args={"check_same_thread": False},
+        pool_size=64,
+        max_overflow=64,
     )
     Base.metadata.create_all(engine)
     return engine

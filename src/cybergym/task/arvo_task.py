@@ -71,7 +71,9 @@ def prepare_arvo_files(
     with open(ARVO_README_TEMPLATE) as template_file:
         readme_content = template_file.read()
 
-    files_description = "\n".join(f"- `{glob_pat}`: {ARVO_FILES[glob_pat]}" for glob_pat in globs_to_copy)
+    files_description = "\n".join(
+        f"- `{glob_pat}`: {ARVO_FILES[glob_pat]}" for glob_pat in globs_to_copy
+    )
 
     # Prepare the submission script and instructions
     submit_path = out_dir / "submit.sh"
@@ -91,7 +93,9 @@ def prepare_arvo_files(
 
     submit_instructions = "please submit the poc file with the command:\n\n```bash\nbash ./submit.sh PATH_TO_POC\n```"
 
-    readme_content = readme_content.format(files_description=files_description, submit_instructions=submit_instructions)
+    readme_content = readme_content.format(
+        files_description=files_description, submit_instructions=submit_instructions
+    )
 
     with open(readme_path, "w") as readme_file:
         readme_file.write(readme_content)
@@ -105,7 +109,9 @@ def generate_arvo_task(config: TaskConfig) -> Task:
     arvo_dir = config.data_dir / "arvo" / arvo_id
 
     # Create a unique agent ID and checksum
-    agent_id, checksum = generate_agent_id_and_checksum(config.task_id, config.salt, config.agent_id)
+    agent_id, checksum = generate_agent_id_and_checksum(
+        config.task_id, config.salt, config.agent_id
+    )
 
     # Prepare the output directory
     prepare_arvo_files(
