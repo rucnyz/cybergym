@@ -1,3 +1,8 @@
+## install dependencies
+
+```shell
+pip install -r requirements.txt
+```
 ## update your dataset (if you updated the dataset)
 
 ```shell
