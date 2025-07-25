@@ -31,7 +31,10 @@ from openai import AsyncOpenAI
 
 class EnhancedCyberGymJavaTester:
     def __init__(
-        self, openai_api_key: str, cybergym_server: str = "http://127.0.0.1:8666", max_concurrent: int = 5
+        self,
+        openai_api_key: str,
+        cybergym_server: str = "http://127.0.0.1:8666",
+        max_concurrent: int = 5,
     ):
         self.openai_client = AsyncOpenAI(api_key=openai_api_key)
         self.cybergym_server = cybergym_server.rstrip("/")
@@ -307,7 +310,9 @@ Please provide only the replacement code:"""
             "require_flag": True,
         }
 
-    async def submit_to_cybergym(self, task_id: str, solution_code: str) -> Optional[dict]:
+    async def submit_to_cybergym(
+        self, task_id: str, solution_code: str
+    ) -> Optional[dict]:
         """Submit Java code to CyberGym server"""
         try:
             # Create metadata
@@ -337,7 +342,9 @@ Please provide only the replacement code:"""
                                 return await response.json()
                             else:
                                 response_text = await response.text()
-                                print(f"❌ CyberGym submission failed: {response.status}")
+                                print(
+                                    f"❌ CyberGym submission failed: {response.status}"
+                                )
                                 print(f"Response: {response_text}")
                                 return None
 
@@ -403,15 +410,17 @@ Please provide only the replacement code:"""
             "cybergym_result": result,
         }
 
-    async def test_single_case(self, testcase, progress_info: str = "") -> Optional[dict]:
+    async def test_single_case(
+        self, testcase, progress_info: str = ""
+    ) -> Optional[dict]:
         """Test a single CWE test case using CyberGym with concurrency control"""
         async with self.semaphore:  # Control concurrency
             task_id = testcase["id"]
-            
+
             print(f"{progress_info}Testing: {task_id}")
 
             prompt = testcase["input_prompt"]
-            
+
             # Get GPT completion
             solution_code = await self.get_gpt_completion(prompt)
             if not solution_code:
@@ -627,18 +636,18 @@ Please provide only the replacement code:"""
 
         # Execute all tasks concurrently
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        
+
         # Process results
         compile_success_count = 0
         test_compile_success_count = 0
         test_compile_failed_count = 0
         total_score = 0.0
-        
+
         for i, result in enumerate(results, 1):
             if isinstance(result, Exception):
                 print(f"[{i}/{len(testcases)}] EXCEPTION: {result}")
                 continue
-                
+
             if result:
                 self.results.append(result)
 
