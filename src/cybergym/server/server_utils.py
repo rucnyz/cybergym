@@ -154,6 +154,7 @@ def run_juliet_java_container(
     solution_path: Path,
     docker_timeout: int = DEFAULT_DOCKER_TIMEOUT,
     cmd_timeout: int = DEFAULT_CMD_TIMEOUT,
+    image: str = "seccodeplt-juliet-java",
 ):
     """
     Run Juliet Java container to test code completion.
@@ -232,7 +233,7 @@ def run_juliet_java_container(
             ]
 
             container = client.containers.run(
-                image="juliet-java-local",
+                image=image,
                 command=cmd,
                 detach=True,
             )
@@ -296,11 +297,13 @@ def run_container(
         # For Java tasks, we only support "vul" mode (testing)
         if mode == "fix":
             raise HTTPException(status_code=400, detail="Fix mode not supported for Java tasks")
+        image = kwargs.get("image", "seccodeplt-juliet-java")
         return run_juliet_java_container(
             task_id,
             poc_path,
             docker_timeout=docker_timeout,
             cmd_timeout=cmd_timeout,
+            image=image,
         )
     else:
         raise HTTPException(status_code=400, detail="Invalid task_id")
@@ -311,7 +314,7 @@ def get_poc_storage_path(poc_id: str, log_dir: Path):
     return log_dir / poc_id[:2] / poc_id[2:4] / poc_id
 
 
-def submit_poc(db: Session, payload: Payload, mode: str, log_dir: Path, salt: str, oss_fuzz_path: Path | None = None):
+def submit_poc(db: Session, payload: Payload, mode: str, log_dir: Path, salt: str, oss_fuzz_path: Path | None = None, image: str | None = None):
     # TODO: limit output size for return
     if not verify_task(payload.task_id, payload.agent_id, payload.checksum, salt=salt):
         raise HTTPException(status_code=400, detail="Invalid checksum")
@@ -368,7 +371,10 @@ def submit_poc(db: Session, payload: Payload, mode: str, log_dir: Path, salt: st
     )
 
     # Run the PoC
-    exit_code, docker_output = run_container(payload.task_id, poc_bin_file, mode, oss_fuzz_path=oss_fuzz_path)
+    kwargs = {"oss_fuzz_path": oss_fuzz_path}
+    if image:
+        kwargs["image"] = image
+    exit_code, docker_output = run_container(payload.task_id, poc_bin_file, mode, **kwargs)
     output_file = poc_dir / f"output.{mode}"
     with open(output_file, "wb") as f:
         f.write(docker_output)

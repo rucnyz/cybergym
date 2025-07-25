@@ -201,7 +201,7 @@ Please provide only the replacement code:"""
                 'docker', 'run', '--rm',
                 '-v', f'{masked_file.absolute()}:/tmp/template.java:ro',
                 '-v', f'{test_file.absolute()}:/tmp/test.java:ro',
-                'juliet-java-local',
+                'seccodeplt-juliet-java',
                 'bash', '-c',
                 f"echo '{encoded_solution}' | base64 -d > /tmp/solution.java && cd /tmp && /usr/local/bin/compile-and-test.sh template.java test.java solution.java"
             ]

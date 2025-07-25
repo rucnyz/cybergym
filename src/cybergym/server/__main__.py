@@ -9,17 +9,17 @@ from fastapi.security import APIKeyHeader
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
-from cybergym.server.pocdb import get_poc_by_hash, init_engine
-from cybergym.server.server_utils import _post_process_result, run_poc_id, submit_poc
-from cybergym.server.types import Payload, PocQuery, VerifyPocs
+from cybergym.server.pocdb import init_engine
+from cybergym.server.server_utils import _post_process_result, submit_poc
+from cybergym.server.types import Payload
 from cybergym.task.types import DEFAULT_SALT
 
 SALT = DEFAULT_SALT
 LOG_DIR = Path("./logs")
 DB_PATH = Path("./poc.db")
-OSS_FUZZ_PATH = Path("./oss-fuzz-data")
 API_KEY = "cybergym-030a0cd7-5908-4862-8ab9-91f2bfc7b56d"
 API_KEY_NAME = "X-API-Key"
+DOCKER_IMAGE = "seccodeplt-juliet-java"
 
 engine: Engine = None
 
@@ -59,30 +59,6 @@ public_router = APIRouter()
 private_router = APIRouter(dependencies=[Depends(get_api_key)])
 
 
-@public_router.post("/submit-vul")
-def submit_vul(db: SessionDep, metadata: Annotated[str, Form()], file: Annotated[UploadFile, File()]):
-    try:
-        payload = Payload.model_validate_json(metadata)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid metadata format") from None
-    payload.data = file.file.read()
-    res = submit_poc(db, payload, mode="vul", log_dir=LOG_DIR, salt=SALT, oss_fuzz_path=OSS_FUZZ_PATH)
-    res = _post_process_result(res)
-    return res
-
-
-@private_router.post("/submit-fix")
-def submit_fix(db: SessionDep, metadata: Annotated[str, Form()], file: Annotated[UploadFile, File()]):
-    try:
-        payload = Payload.model_validate_json(metadata)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid metadata format") from None
-    payload.data = file.file.read()
-    res = submit_poc(db, payload, mode="fix", log_dir=LOG_DIR, salt=SALT, oss_fuzz_path=OSS_FUZZ_PATH)
-    res = _post_process_result(res)
-    return res
-
-
 @public_router.post("/submit-java-code")
 def submit_java_code(db: SessionDep, metadata: Annotated[str, Form()], file: Annotated[UploadFile, File()]):
     """Submit Java code for CWE testing"""
@@ -96,7 +72,7 @@ def submit_java_code(db: SessionDep, metadata: Annotated[str, Form()], file: Ann
         raise HTTPException(status_code=400, detail="This endpoint is only for Java tasks")
 
     payload.data = file.file.read()
-    res = submit_poc(db, payload, mode="vul", log_dir=LOG_DIR, salt=SALT)
+    res = submit_poc(db, payload, mode="vul", log_dir=LOG_DIR, salt=SALT, image=DOCKER_IMAGE)
     res = _post_process_result(res)
 
     # Add Java-specific information to response
@@ -106,47 +82,12 @@ def submit_java_code(db: SessionDep, metadata: Annotated[str, Form()], file: Ann
     return res
 
 
-@private_router.post("/query-poc")
-def query_db(db: SessionDep, query: PocQuery):
-    records = get_poc_by_hash(db, query.agent_id, query.task_id)
-    if not records:
-        raise HTTPException(status_code=404, detail="Record not found")
-    return [record.to_dict() for record in records]
-
-
-@private_router.post("/verify-agent-pocs")
-def verify_all_pocs_for_agent_id(db: SessionDep, query: VerifyPocs):
-    """
-    Verify all PoCs for a given agent_id.
-    """
-    records = get_poc_by_hash(db, query.agent_id)
-    if not records:
-        raise HTTPException(status_code=404, detail="No records found for this agent_id")
-
-    for record in records:
-        run_poc_id(db, LOG_DIR, record.poc_id, oss_fuzz_path=OSS_FUZZ_PATH)
-
-    return {
-        "message": f"All {len(records)} PoCs for this agent_id have been verified",
-        "poc_ids": [record.poc_id for record in records],
-    }
-
-
 @public_router.get("/")
 def root():
     return {
         "message": "SecCodePlt Server API",
         "version": "1.0.0",
-        "endpoints": {
-            "public": [
-                "POST /submit-java-code"
-            ],
-            "private": [
-                "POST /submit-fix",
-                "POST /query-poc",
-                "POST /verify-agent-pocs"
-            ]
-        }
+        "endpoints": {"public": ["POST /submit-java-code"], "private": []},
     }
 
 
@@ -160,8 +101,8 @@ if __name__ == "__main__":
     parser.add_argument("--port", type=int, default=8666, help="Port to run the server on")
     parser.add_argument("--salt", type=str, default=SALT, help="Salt for checksum")
     parser.add_argument("--log_dir", type=Path, default=LOG_DIR, help="Directory to store logs")
+    parser.add_argument("--image", type=str, default=DOCKER_IMAGE, help="Docker image for Juliet Java tests")
     parser.add_argument("--db_path", type=Path, default=DB_PATH, help="Path to SQLite DB")
-    parser.add_argument("--cybergym_oss_fuzz_path", type=Path, default=OSS_FUZZ_PATH, help="Path to OSS-Fuzz")
 
     args = parser.parse_args()
     SALT = args.salt
@@ -170,6 +111,6 @@ if __name__ == "__main__":
 
     DB_PATH = Path(args.db_path)
 
-    OSS_FUZZ_PATH = Path(args.cybergym_oss_fuzz_path)
+    DOCKER_IMAGE = args.image
 
     uvicorn.run(app, host=args.host, port=args.port)

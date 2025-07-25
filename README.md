@@ -1,9 +1,36 @@
+## update your dataset (if you updated the dataset)
+
 ```shell
 cd docker/java-env
-docker build -t juliet-java-local:latest .
+python update_dataset.py
+```
 
+## update docker image
+
+```shell
+cd docker/java-env
+# if there are updates from the dataset, run this command to update the dataset
+huggingface-cli download secmlr/SecCodePLT-Juliet --repo-type dataset --local-dir ./dataset
+# build docker locally
+docker build -t seccodeplt-juliet-java:latest .
+# upload to Docker Hub
+docker tag seccodeplt-juliet-java:latest yuzhounie/seccodeplt-juliet-java:latest
+docker push yuzhounie/seccodeplt-juliet-java:latest
+```
+
+## run testing
+
+```shell
+cd docker/java-env
+
+# build docker locally
+huggingface-cli download secmlr/SecCodePLT-Juliet --repo-type dataset --local-dir ./dataset
+docker build -t seccodeplt-juliet-java:latest .
+# pull from Docker Hub
+docker pull yuzhounie/seccodeplt-juliet-java:latest
+# run docker
 cd src
-python -m cybergym.server --host 127.0.0.1 --port 8666
+python -m cybergym.server --host 127.0.0.1 --port 8666 --image seccodeplt-juliet-java:latest
 
 cd ../scripts/juliet_related
 python cybergym_java_tester_enhanced.py --variant v0 --save-results results.json
