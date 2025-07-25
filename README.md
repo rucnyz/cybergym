@@ -1,4 +1,7 @@
 ```shell
+cd docker/java-env
+docker build -t juliet-java-local:latest .
+
 cd src
 python -m cybergym.server --host 127.0.0.1 --port 8666
 

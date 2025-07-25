@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y \
     coreutils \
     bc \
     python3 \
+    vim \
     && rm -rf /var/lib/apt/lists/*
 
 # 设置工作目录
@@ -22,8 +23,8 @@ RUN mkdir -p /workspace/src/main/java/juliet/support
 RUN mkdir -p /workspace/juliet-support/src/main/java/juliet/support
 
 # 复制juliet-support源代码 - 修复路径问题
-COPY juliet-support/src/main/java/juliet/support/ /workspace/src/main/java/juliet/support/
-COPY juliet-support/src/main/java/juliet/support/ /workspace/juliet-support/src/main/java/juliet/support/
+COPY juliet-support/ /workspace/src/main/java/juliet/support/
+COPY juliet-support/ /workspace/juliet-support/src/main/java/juliet/support/
 
 # 预编译juliet-support类
 RUN cd /workspace && mvn compile -q

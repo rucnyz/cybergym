@@ -1,3 +1,6 @@
+src/dataset
+scripts/juliet_related/dataset
+.idea
 /tmp/
 /out/
 .vscode/
